@@ -1,0 +1,21 @@
+﻿# Outlook Category -> SharePoint Category
+mapping:
+  CUSTOMER PRES/DEMO: "Customer - Demo/ Presentation"
+  CUSTOMER PREP: "Customer - Demo/ Presentation"
+  PREP: "Prep - Demo/ Presentation"
+  RFI/RFP/RFQ: "RFI/RFP/RFQ"
+  HOLIDAY: "Time Off"
+  INTERNAL MEETING: "Internal Meeting"
+  MARKETING: "Support"
+  PARTNER SUPPORT: "Support"
+  TRAINING: "Training"
+  TRAVEL: "Travel"
+  ADMIN: "Admin"
+
+# Kategorie wymagajace Opportunity ID
+sales_categories:
+  - "Customer - Demo/ Presentation"
+  - "Prep - Demo/ Presentation"
+  - "RFI/RFP/RFQ"
+  - "Discovery"
+  - "POC"

@@ -1,0 +1,16 @@
+﻿# Sciezki
+paths:
+  calendar_input: "data/input/calendar_export.json"
+  project_codes: "data/input/project_codes.xlsx"
+  excel_preview: "data/output/time_entries_preview.xlsx"
+
+# Parametry przetwarzania
+processing:
+  min_duration_minutes: 15
+  hour_rounding: 0.5
+  week_start_day: "sunday"
+  work_hours_per_day: 8
+
+# SharePoint
+sharepoint:
+  graph_base_url: "https://graph.microsoft.com/v1.0"
