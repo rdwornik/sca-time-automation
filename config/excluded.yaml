@@ -1,6 +1,6 @@
-﻿# Kategorie do pominiecia (nie trackowane)
+﻿# Categories to skip (not tracked)
 categories:
   - "PERSONAL"
 
-# Slowa kluczowe w tytulach do pominiecia (opcjonalne)
+# Title keywords to skip (optional)
 title_keywords: []

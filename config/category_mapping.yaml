@@ -12,7 +12,7 @@ mapping:
   TRAVEL: "Travel"
   ADMIN: "Admin"
 
-# Kategorie wymagajace Opportunity ID
+# Categories requiring Opportunity ID
 sales_categories:
   - "Customer - Demo/ Presentation"
   - "Prep - Demo/ Presentation"

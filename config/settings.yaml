@@ -1,10 +1,10 @@
-﻿# Sciezki
+﻿# Paths
 paths:
   calendar_input: "data/input/calendar_export.json"
   project_codes: "data/input/project_codes.xlsx"
   excel_preview: "data/output/time_entries_preview.xlsx"
 
-# Parametry przetwarzania
+# Processing parameters
 processing:
   min_duration_minutes: 15
   hour_rounding: 0.5
