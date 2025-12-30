@@ -13,7 +13,7 @@ load_dotenv()
 
 def get_project_root() -> Path:
     """Return project root directory."""
-    return Path(__file__).parent.parent.parent
+    return Path(__file__).parent.parent  # było parent.parent.parent
 
 
 def load_yaml(filename: str) -> dict:
