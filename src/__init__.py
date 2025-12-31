@@ -1,3 +1,1 @@
-﻿"""SCA Time Automation package."""
-
-__version__ = "0.1.0"
+"""SCA Time Automation package."""
