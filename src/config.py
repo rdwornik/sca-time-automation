@@ -1,4 +1,4 @@
-﻿"""
+"""
 Configuration loader for SCA Time Automation.
 Loads settings from YAML files and environment variables.
 """
