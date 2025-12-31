@@ -85,11 +85,11 @@ def generate_preview(clients_config: dict, output_path: str | Path | None = None
         hours = round_hours(event["minutes"] / 60)
         needs_opp_id = sp_category in sales_categories
         
-        # Match opportunity ID
+        # Match opportunity ID - for ANY row with client
         opp_id, needs_review = "", False
-        if client and needs_opp_id:
+        if client:
             opp_id, needs_review = match_opportunity_id(client, event["title"], project_codes)
-        
+
         rows.append({
             "week_beginning": week,
             "category": sp_category,
@@ -98,7 +98,7 @@ def generate_preview(clients_config: dict, output_path: str | Path | None = None
             "opportunity_id": opp_id,
             "title": event["title"],
             "external_domains": event.get("external_domains", ""),
-            "needs_opp_id": needs_opp_id,
+            "needs_opp_id": bool(client),  # Any row with client needs Opp ID
             "needs_review": needs_review,
             "status": "NEW"
         })
