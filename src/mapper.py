@@ -42,7 +42,7 @@ def extract_client_from_title_keywords(title: str, company_names: list[str]) -> 
     return None
 
 
-def detect_client(event: dict) -> str | None:
+def detect_client(event: dict, use_ai: bool = True) -> str | None:
     """
     Detect client from event using Gemini AI with fallback to keyword matching.
 
@@ -51,12 +51,14 @@ def detect_client(event: dict) -> str | None:
 
     Args:
         event: Calendar event with title and external_domains
+        use_ai: If True, try Gemini AI first. If False, use keyword matching only.
 
     Returns:
         Client name or None
     """
     from src.gemini_client import detect_client_with_context
     from src.project_codes import load_project_codes
+    from src.config import get_settings
 
     title = event.get("title", "")
     external_domains = event.get("external_domains", "")
@@ -72,14 +74,19 @@ def detect_client(event: dict) -> str | None:
         if not company_names:
             return None
 
-        # Try Gemini AI first (with external_domains as hint)
-        try:
-            ai_client = detect_client_with_context(title, external_domains, company_names)
-            if ai_client:
-                return ai_client
-        except Exception:
-            # Gemini not available, fall through to keyword matching
-            pass
+        # Check if AI is enabled in config and requested
+        settings = get_settings()
+        ai_enabled = settings["ai"]["enabled"] and use_ai
+
+        # Try Gemini AI first if enabled (with external_domains as hint)
+        if ai_enabled:
+            try:
+                ai_client = detect_client_with_context(title, external_domains, company_names)
+                if ai_client:
+                    return ai_client
+            except Exception:
+                # Gemini not available, fall through to keyword matching
+                pass
 
         # Fallback to simple keyword matching from company names
         keyword_client = extract_client_from_title_keywords(title, company_names)

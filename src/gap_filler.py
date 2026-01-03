@@ -106,13 +106,22 @@ def generate_autofill_entries(
     events: list,
     aggregated_df: pd.DataFrame,
     week: str,
-    empty_hours: float
+    empty_hours: float,
+    use_ai: bool = True
 ) -> list[dict]:
     """
     Generate new entries to fill empty hours, distributed by category proportion.
     Ensures total hours equals exactly empty_hours (no rounding errors).
+
+    Args:
+        events: Calendar events list
+        aggregated_df: Aggregated DataFrame
+        week: Week beginning date (YYYY-MM-DD)
+        empty_hours: Number of hours to fill
+        use_ai: If True, use Gemini AI for comment generation
     """
     from src.gemini_client import generate_autofill_comment
+    from src.config import get_settings
 
     # Categories that should NEVER have opportunity_id or client
     NO_OPPORTUNITY_ID_CATEGORIES = {
@@ -144,10 +153,19 @@ def generate_autofill_entries(
                 client = ""
                 opp_id = ""
 
-            # Generate AI comment for autofilled entry
-            comment = generate_autofill_comment(cat, client, week_context)
-            if not comment:
-                comment = f"{cat} - autofilled work"
+            # Generate comment for autofilled entry
+            settings = get_settings()
+            ai_enabled = settings["ai"]["enabled"] and use_ai
+
+            if ai_enabled:
+                comment = generate_autofill_comment(cat, client, week_context)
+
+            if not ai_enabled or not comment:
+                # Fallback to simple comment
+                if client:
+                    comment = f"{cat} work for {client}"
+                else:
+                    comment = f"{cat} work"
 
             new_entries.append({
                 "week_beginning": week,
@@ -177,14 +195,22 @@ def generate_autofill_entries(
 
 
 def fill_gaps_with_new_entries(
-    events: list,
     aggregated_df: pd.DataFrame,
+    use_ai: bool = True,
     target_hours: float = 40.0
 ) -> pd.DataFrame:
     """
     Find actual empty time slots and create new autofilled entries.
     Only fills if there are truly empty hours in the calendar.
+
+    Args:
+        aggregated_df: Aggregated DataFrame with events
+        use_ai: If True, use Gemini AI for comment generation
+        target_hours: Target hours per week (default 40.0)
     """
+    from src.loader import load_and_filter
+
+    events = load_and_filter()
     df = aggregated_df.copy()
 
     # Ensure is_autofilled column exists and is False for original entries
@@ -228,7 +254,7 @@ def fill_gaps_with_new_entries(
             empty_hours = min(total_empty_hours, target_hours - current_hours)
 
             if empty_hours > 0:
-                new_entries = generate_autofill_entries(events, df, week, empty_hours)
+                new_entries = generate_autofill_entries(events, df, week, empty_hours, use_ai)
                 all_new_entries.extend(new_entries)
 
     # Add new entries to dataframe
