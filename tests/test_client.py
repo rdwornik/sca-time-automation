@@ -1,13 +1,8 @@
-# test_final.py
-import sys
-sys.path.insert(0, '.')
+import json
+with open('data/input/calendar_export.json', 'r', encoding='utf-8-sig') as f:
+    data = json.load(f)
 
-from src.excel_preview import generate_final_preview
-import yaml
-
-clients = yaml.safe_load(open('data/input/clients.yaml'))
-df = generate_final_preview(clients)
-
-# Show rows with client
-with_client = df[df['client'] != '']
-print(with_client[['week_beginning', 'category', 'client', 'hours', 'opportunity_id']].to_string())
+    print('=== INTERNAL MEETING events ===')
+    for e in data['events']:
+        if e['category'] == 'INTERNAL MEETING':
+            print(f"{e['start']} - {e['end']}: {e['title'][:50]}")

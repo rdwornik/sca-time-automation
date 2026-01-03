@@ -1,8 +1,12 @@
 """
 Category and client mapping.
+
+Uses project_codes.xlsx as single source of truth for client/company information.
+Client detection uses Gemini AI with fallback to simple keyword matching.
 """
 
 from src.config import get_category_mapping
+from src.text_utils import normalize_text
 
 
 def map_category(outlook_category: str) -> str | None:
@@ -11,41 +15,79 @@ def map_category(outlook_category: str) -> str | None:
     return mapping.get(outlook_category.upper())
 
 
-def extract_client_from_domains(external_domains: str, domain_to_client: dict) -> str | None:
-    """Extract client name from external domains."""
-    if not external_domains:
+def extract_client_from_title_keywords(title: str, company_names: list[str]) -> str | None:
+    """
+    Extract client name from event title using simple keyword matching.
+    Fallback when Gemini AI is not available.
+
+    Args:
+        title: Event title to search
+        company_names: List of company names from project_codes.xlsx
+
+    Returns:
+        Matched company name or None
+    """
+    title_normalized = normalize_text(title)
+
+    for company in company_names:
+        company_normalized = normalize_text(company)
+        # Check if company name (or significant part) appears in title
+        if company_normalized in title_normalized:
+            return company
+        # Also check individual words for partial matches (e.g., "Wurth" in "Wurthindustry")
+        for word in company_normalized.split():
+            if len(word) > 3 and word in title_normalized:
+                return company
+
+    return None
+
+
+def detect_client(event: dict) -> str | None:
+    """
+    Detect client from event using Gemini AI with fallback to keyword matching.
+
+    Uses project_codes.xlsx as the single source of truth for company names.
+    External domains are passed as hints to Gemini for better detection.
+
+    Args:
+        event: Calendar event with title and external_domains
+
+    Returns:
+        Client name or None
+    """
+    from src.gemini_client import detect_client_with_context
+    from src.project_codes import load_project_codes
+
+    title = event.get("title", "")
+    external_domains = event.get("external_domains", "")
+
+    if not title:
         return None
 
-    for domain in external_domains.split(","):
-        domain = domain.strip().lower()
-        # Check exact match
-        if domain in domain_to_client:
-            return domain_to_client[domain]
-        # Check if domain contains client keyword
-        for known_domain, client in domain_to_client.items():
-            if known_domain in domain or domain in known_domain:
-                return client
+    try:
+        # Load project codes and extract company names
+        project_codes_df = load_project_codes()
+        company_names = project_codes_df["company"].unique().tolist()
+
+        if not company_names:
+            return None
+
+        # Try Gemini AI first (with external_domains as hint)
+        try:
+            ai_client = detect_client_with_context(title, external_domains, company_names)
+            if ai_client:
+                return ai_client
+        except Exception:
+            # Gemini not available, fall through to keyword matching
+            pass
+
+        # Fallback to simple keyword matching from company names
+        keyword_client = extract_client_from_title_keywords(title, company_names)
+        if keyword_client:
+            return keyword_client
+
+    except Exception:
+        # Silently fail if project codes cannot be loaded
+        pass
 
     return None
-
-
-def extract_client_from_title(title: str, keywords_to_client: dict) -> str | None:
-    """Extract client name from event title."""
-    title_lower = title.lower()
-
-    for keyword, client in keywords_to_client.items():
-        if keyword.lower() in title_lower:
-            return client
-
-    return None
-
-
-def detect_client(event: dict, domain_to_client: dict, keywords_to_client: dict) -> str | None:
-    """Detect client from event using domains first, then title."""
-    # Priority 1: external domains
-    client = extract_client_from_domains(event.get("external_domains", ""), domain_to_client)
-    if client:
-        return client
-
-    # Priority 2: title keywords
-    return extract_client_from_title(event.get("title", ""), keywords_to_client)
