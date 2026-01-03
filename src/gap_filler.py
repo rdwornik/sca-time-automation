@@ -1,77 +1,245 @@
 """
-Fill gaps to reach 40h/week by distributing hours proportionally.
+Fill empty time slots (9:00-17:00) with generated entries.
 """
 
 import pandas as pd
+from datetime import datetime, timedelta
+from collections import defaultdict
 
-EXCLUDED_FROM_FILL = {"Time Off", "Travel", ">>> WEEK TOTAL"}
-MIN_TRACKED_HOURS = 20.0  # Don't fill weeks with less than this (probably incomplete)
+# Categories that can be autofilled
+AUTOFILL_CATEGORIES = {
+    "Prep - Demo/ Presentation",
+    "Internal Meeting",
+    "Admin",
+    "Training",
+    "Support",
+}
+
+# NEVER autofill these
+NEVER_AUTOFILL = {
+    "Customer - Demo/ Presentation",
+    "Discovery",
+    "POC",
+    "RFI/RFP/RFQ",  # Requires specific client engagement
+    "Travel",
+    "Time Off",
+}
+
+WORK_START = 9  # 9:00
+WORK_END = 17   # 17:00
 
 
-def calculate_gaps(df: pd.DataFrame, target_hours: float = 40.0) -> dict[str, float]:
-    """Calculate missing hours per week."""
-    gaps = {}
+def find_empty_slots(events: list, date: datetime) -> list[tuple[int, int]]:
+    """
+    Find empty time slots between 9:00-17:00 for a given date.
+    Returns list of (start_hour, end_hour) tuples.
+    """
+    date_str = date.strftime("%Y-%m-%d")
     
+    # Get events for this day
+    day_events = []
+    for e in events:
+        if e["start"].startswith(date_str):
+            start_hour = int(e["start"][11:13])
+            end_hour = int(e["end"][11:13])
+            end_min = int(e["end"][14:16])
+            if end_min > 0:
+                end_hour += 1
+            day_events.append((max(start_hour, WORK_START), min(end_hour, WORK_END)))
+    
+    # Find empty slots
+    occupied = [False] * 24
+    for start, end in day_events:
+        for h in range(start, end):
+            if 0 <= h < 24:
+                occupied[h] = True
+    
+    empty_slots = []
+    slot_start = None
+    
+    for hour in range(WORK_START, WORK_END):
+        if not occupied[hour]:
+            if slot_start is None:
+                slot_start = hour
+        else:
+            if slot_start is not None:
+                empty_slots.append((slot_start, hour))
+                slot_start = None
+    
+    if slot_start is not None:
+        empty_slots.append((slot_start, WORK_END))
+    
+    return empty_slots
+
+
+def calculate_category_distribution(df: pd.DataFrame, week: str) -> dict[str, float]:
+    """
+    Calculate percentage distribution of autofillable categories for a week.
+    Works with individual calendar events (non-aggregated data).
+    Returns dict of {(category, client, opp_id): proportion}.
+    """
+    week_data = df[
+        (df["week_beginning"] == week) &
+        (df["category"].isin(AUTOFILL_CATEGORIES)) &
+        (df["is_autofilled"] == False)
+    ]
+
+    if week_data.empty:
+        return {("Prep - Demo/ Presentation", "", ""): 1.0}
+
+    total = week_data["hours"].sum()
+    if total == 0:
+        return {("Prep - Demo/ Presentation", "", ""): 1.0}
+
+    distribution = {}
+    for _, row in week_data.iterrows():
+        cat = row["category"]
+        client = row.get("client", "")
+        opp_id = row.get("opportunity_id", "")
+        key = (cat, client, opp_id)
+        distribution[key] = distribution.get(key, 0) + row["hours"] / total
+
+    return distribution
+
+
+def generate_autofill_entries(
+    events: list,
+    aggregated_df: pd.DataFrame,
+    week: str,
+    empty_hours: float
+) -> list[dict]:
+    """
+    Generate new entries to fill empty hours, distributed by category proportion.
+    Ensures total hours equals exactly empty_hours (no rounding errors).
+    """
+    from src.gemini_client import generate_autofill_comment
+
+    # Categories that should NEVER have opportunity_id or client
+    NO_OPPORTUNITY_ID_CATEGORIES = {
+        'Training',
+        'Admin',
+        'Support',
+        'Travel',
+        'Time Off',
+    }
+
+    distribution = calculate_category_distribution(aggregated_df, week)
+
+    # Build context for Gemini from week activities
+    week_data = aggregated_df[
+        (aggregated_df["week_beginning"] == week) &
+        (aggregated_df["category"] != ">>> WEEK TOTAL")
+    ]
+    week_context = "; ".join(week_data.get("comments", ["General work"]).head(3).tolist())
+
+    # Calculate hours with rounding
+    new_entries = []
+    total_allocated = 0.0
+
+    for (cat, client, opp_id), proportion in distribution.items():
+        hours = round(empty_hours * proportion * 2) / 2  # Round to 0.5
+        if hours > 0:
+            # Clear client/opportunity_id for non-sales categories
+            if cat in NO_OPPORTUNITY_ID_CATEGORIES:
+                client = ""
+                opp_id = ""
+
+            # Generate AI comment for autofilled entry
+            comment = generate_autofill_comment(cat, client, week_context)
+            if not comment:
+                comment = f"{cat} - autofilled work"
+
+            new_entries.append({
+                "week_beginning": week,
+                "category": cat,
+                "client": client,
+                "hours": hours,
+                "opportunity_id": opp_id,
+                "comments": comment,
+                "external_domains": "",
+                "needs_review": True,
+                "is_autofilled": True,
+                "status": "NEW"
+            })
+            total_allocated += hours
+
+    # Fix rounding errors - ensure total equals exactly empty_hours
+    if new_entries and abs(total_allocated - empty_hours) > 0.01:
+        difference = empty_hours - total_allocated
+        # Add/subtract difference to the largest entry (most visible)
+        largest_entry = max(new_entries, key=lambda x: x["hours"])
+        largest_entry["hours"] = round((largest_entry["hours"] + difference) * 2) / 2
+        # Ensure we don't create negative hours
+        if largest_entry["hours"] < 0:
+            largest_entry["hours"] = 0
+
+    return new_entries
+
+
+def fill_gaps_with_new_entries(
+    events: list,
+    aggregated_df: pd.DataFrame,
+    target_hours: float = 40.0
+) -> pd.DataFrame:
+    """
+    Find actual empty time slots and create new autofilled entries.
+    Only fills if there are truly empty hours in the calendar.
+    """
+    df = aggregated_df.copy()
+
+    # Ensure is_autofilled column exists and is False for original entries
+    if "is_autofilled" not in df.columns:
+        df["is_autofilled"] = False
+    df["is_autofilled"] = df["is_autofilled"].fillna(False)
+
+    all_new_entries = []
+
     for week in df["week_beginning"].unique():
-        week_data = df[
-            (df["week_beginning"] == week) & 
-            (~df["category"].isin(EXCLUDED_FROM_FILL))
-        ]
-        
-        # Skip weeks with Time Off
+        # Skip Time Off weeks
         has_time_off = ((df["week_beginning"] == week) & (df["category"] == "Time Off")).any()
         if has_time_off:
             continue
-        
-        total = week_data["hours"].sum()
-        
-        # Only fill if above minimum threshold
-        if total >= MIN_TRACKED_HOURS and total < target_hours:
-            gaps[week] = target_hours - total
-    
-    return gaps
 
+        # Skip WEEK TOTAL rows
+        week_data = df[
+            (df["week_beginning"] == week) &
+            (df["category"] != ">>> WEEK TOTAL")
+        ]
 
-def fill_gaps(df: pd.DataFrame, target_hours: float = 40.0) -> pd.DataFrame:
-    """Distribute missing hours proportionally to existing entries."""
-    df = df.copy()
-    gaps = calculate_gaps(df, target_hours)
-    
-    for week, missing in gaps.items():
-        mask = (
-            (df["week_beginning"] == week) & 
-            (~df["category"].isin(EXCLUDED_FROM_FILL))
-        )
-        week_data = df[mask]
-        
-        if week_data.empty:
+        current_hours = week_data["hours"].sum()
+
+        if current_hours >= target_hours:
             continue
-        
-        total_hours = week_data["hours"].sum()
-        if total_hours == 0:
-            continue
-        
-        # Distribute and track remainder
-        distributed = 0.0
-        indices = list(week_data.index)
-        
-        for i, idx in enumerate(indices):
-            proportion = df.loc[idx, "hours"] / total_hours
-            additional = missing * proportion
-            
-            if i == len(indices) - 1:
-                # Last entry gets remainder to hit exactly target
-                additional = missing - distributed
-            
-            rounded = round(additional * 2) / 2  # Round to 0.5
-            df.loc[idx, "hours"] += rounded
-            distributed += rounded
-        
-        # Update week total
-        total_mask = (df["week_beginning"] == week) & (df["category"] == ">>> WEEK TOTAL")
-        if total_mask.any():
-            new_total = df[mask]["hours"].sum()
-            df.loc[total_mask, "hours"] = new_total
-            df.loc[total_mask, "comments"] = f"Total: {new_total}h / 40h = {new_total/40*100:.0f}%"
-    
+
+        # Find ACTUAL empty slots in the calendar for this week
+        week_date = datetime.strptime(week, "%Y-%m-%d")
+        total_empty_hours = 0
+
+        for day_offset in range(7):
+            day = week_date + timedelta(days=day_offset)
+            if day.weekday() < 5:  # Weekdays only
+                empty_slots = find_empty_slots(events, day)
+                for start_h, end_h in empty_slots:
+                    total_empty_hours += (end_h - start_h)
+
+        # Only autofill if there are actual empty slots
+        if total_empty_hours > 0:
+            # Don't exceed available empty slots or target
+            empty_hours = min(total_empty_hours, target_hours - current_hours)
+
+            if empty_hours > 0:
+                new_entries = generate_autofill_entries(events, df, week, empty_hours)
+                all_new_entries.extend(new_entries)
+
+    # Add new entries to dataframe
+    if all_new_entries:
+        from src.aggregator import add_week_summaries
+
+        new_df = pd.DataFrame(all_new_entries)
+        df = pd.concat([df[df["category"] != ">>> WEEK TOTAL"], new_df], ignore_index=True)
+
+        # Recalculate week totals
+        df = df.sort_values(["week_beginning", "category", "client"])
+        df = add_week_summaries(df)
+
     return df
