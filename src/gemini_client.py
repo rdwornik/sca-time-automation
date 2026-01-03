@@ -3,7 +3,7 @@ Gemini Flash API client for intelligent text generation.
 """
 
 from google import genai
-from src.config import get_env
+from src.config import get_env, get_settings
 
 
 def get_client():
@@ -18,9 +18,12 @@ def get_client():
 def call_gemini(prompt: str) -> str:
     """Call Gemini Flash API with prompt."""
     try:
+        settings = get_settings()
+        model = settings["ai"]["model"]
+
         client = get_client()
         response = client.models.generate_content(
-            model="gemini-3-flash-preview",
+            model=model,
             contents=prompt
         )
         return response.text.strip()

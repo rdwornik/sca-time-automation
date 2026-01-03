@@ -3,12 +3,16 @@ SharePoint Graph API connector for SCA Time Tracker.
 """
 
 import requests
-from src.config import get_env
+from src.config import get_env, get_settings
 
-# SharePoint configuration
-SITE_ID = "jda365.sharepoint.com,05bdc0c0-5d32-414e-8670-6a2b6b9758e7,348b9099-9af2-4d9f-bb9d-7bad4a569b04"
-LIST_ID = "70738fad-ba9a-4e2c-99cf-3adc450f6127"
-GRAPH_URL = f"https://graph.microsoft.com/v1.0/sites/{SITE_ID}/lists/{LIST_ID}/items"
+
+def get_graph_url() -> str:
+    """Build Graph API URL from config."""
+    settings = get_settings()
+    site_id = settings["sharepoint"]["site_id"]
+    list_id = settings["sharepoint"]["list_id"]
+    base_url = settings["sharepoint"]["graph_base_url"]
+    return f"{base_url}/sites/{site_id}/lists/{list_id}/items"
 
 # Map our categories to SharePoint valid values
 CATEGORY_MAP = {
@@ -75,8 +79,8 @@ def post_time_entry(entry: dict, access_token: str = None) -> dict:
         "Authorization": f"Bearer {access_token}",
         "Content-Type": "application/json"
     }
-    
-    response = requests.post(GRAPH_URL, headers=headers, json={"fields": fields})
+
+    response = requests.post(get_graph_url(), headers=headers, json={"fields": fields})
     
     if response.status_code == 201:
         return {"success": True, "data": response.json()}

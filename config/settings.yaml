@@ -10,7 +10,17 @@ processing:
   hour_rounding: 0.5
   week_start_day: "sunday"
   work_hours_per_day: 8
+  work_hours_target: 40
+  work_start_hour: 9
+  work_end_hour: 17
 
-# SharePoint
+# SharePoint configuration
 sharepoint:
   graph_base_url: "https://graph.microsoft.com/v1.0"
+  site_id: "jda365.sharepoint.com,05bdc0c0-5d32-414e-8670-6a2b6b9758e7,348b9099-9af2-4d9f-bb9d-7bad4a569b04"
+  list_id: "70738fad-ba9a-4e2c-99cf-3adc450f6127"
+
+# AI configuration
+ai:
+  enabled: true
+  model: "gemini-2.0-flash-exp"
