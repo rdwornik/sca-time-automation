@@ -16,12 +16,7 @@ import sys
 from pathlib import Path
 
 from src.config import get_settings
-from src.loader import load_and_filter
-from src.mapper import detect_client, map_category
-from src.aggregator import aggregate_entries, add_week_summaries
-from src.gap_filler import fill_gaps_with_new_entries
 from src.excel_preview import generate_final_preview
-from src.project_codes import load_project_codes
 from src.sharepoint import post_week_entries
 
 import pandas as pd
@@ -53,49 +48,15 @@ def cmd_preview(use_ai: bool = True):
     print(f"Generating preview ({mode})...")
     print()
 
-    # Load calendar events
-    events = load_and_filter()
-    print(f"Loaded {len(events)} calendar events")
-
-    # Load project codes for client matching
-    project_codes = load_project_codes()
-    company_names = project_codes["Company"].unique().tolist()
-    print(f"Loaded {len(company_names)} companies from project codes")
-
-    # Map events
-    mapped = []
-    for event in events:
-        sp_category = map_category(event.get("category", ""))
-        if not sp_category:
-            continue
-
-        client = detect_client(event, use_ai=ai_enabled)
-
-        mapped.append({
-            "week_beginning": event["week_beginning"],
-            "category": sp_category,
-            "minutes": event["minutes"],
-            "client": client,
-            "title": event.get("title", "")
-        })
-
-    print(f"Mapped {len(mapped)} events to SharePoint categories")
-
-    # Aggregate
-    df = aggregate_entries(mapped)
-    print(f"Aggregated to {len(df)} entries")
-
-    # Fill gaps
-    df = fill_gaps_with_new_entries(df, use_ai=ai_enabled)
-    print(f"After gap filling: {len(df)} entries")
-
-    # Add week summaries
-    df = add_week_summaries(df)
-
-    # Generate preview
+    # Generate preview using the complete workflow in excel_preview
     output_path = settings["paths"]["excel_preview"]
-    generate_final_preview(df, output_path)
+    df = generate_final_preview(output_path, fill=True)
 
+    # Count entries (excluding summary rows)
+    entry_count = len(df[df["category"] != ">>> WEEK TOTAL"])
+    week_count = df[df["category"] != ">>> WEEK TOTAL"]["week_beginning"].nunique()
+
+    print(f"Generated {entry_count} entries across {week_count} weeks")
     print()
     print(f"✓ Preview generated: {output_path}")
     print()
@@ -103,6 +64,7 @@ def cmd_preview(use_ai: bool = True):
     print("  - Upload latest week: python run.py upload --latest")
     print("  - Upload specific week: python run.py upload 2025-12-07")
     print()
+
 
 
 def cmd_upload(week: str = None, latest: bool = False):

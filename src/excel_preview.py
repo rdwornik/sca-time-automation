@@ -153,15 +153,10 @@ def generate_final_preview(output_path: str | Path | None = None, fill: bool = T
     if output_path is None:
         output_path = Path(settings["paths"]["excel_preview"])
 
-    # Get events and resolve overlaps for gap filler
-    events = load_and_filter()
-    events = split_multiday_events(events)
-    events = resolve_overlaps_by_hour(events, lambda e: map_category(e["category"]))
-
     df = generate_aggregated_preview(output_path=None)
 
     if fill:
-        df = fill_gaps_with_new_entries(events, df)
+        df = fill_gaps_with_new_entries(df)
 
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
