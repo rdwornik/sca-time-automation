@@ -9,7 +9,6 @@ data/output/*
 token_cache.json
 .vscode/*
 !.vscode/settings.json
-!.vscode/keybindings.json
 
 # Claude Code files
 .claude/
