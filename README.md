@@ -22,6 +22,7 @@ This tool streamlines your weekly time tracking workflow:
 - **Intelligent Gap Filling**: Distributes missing hours based on your actual work patterns
 - **Week Summaries**: Automatic totals and validation
 - **Manual Override**: Excel preview allows full editing before upload
+- **Manager Report**: Generate summary reports with weekly hours breakdown and opportunity tracking
 
 ## Quick Start
 
@@ -102,6 +103,9 @@ sharepoint:
 ai:
   enabled: true                # Set to false to disable AI
   model: "gemini-2.0-flash-exp"
+
+report:
+  weeks_back: 12               # Default weeks for preview/report
 ```
 
 #### 3.3 Input Files
@@ -146,6 +150,11 @@ python run.py preview
 python run.py preview --no-ai
 ```
 
+**Filter to specific number of weeks:**
+```bash
+python run.py preview --weeks 12
+```
+
 This generates `data/output/time_entries_preview.xlsx` with:
 - All calendar events mapped to SharePoint categories
 - Client detection (AI or keyword-based)
@@ -187,6 +196,24 @@ The upload will:
 - Post entries to SharePoint Time Tracker
 - Show progress and results
 - Report any errors
+
+#### Step 6: Generate Manager Report (Optional)
+
+```bash
+python run.py report
+```
+
+This generates `data/output/manager_report.xlsx` with two sheets:
+
+- **Weekly Hours**: Pivot table showing hours by simplified category per week
+- **Opportunities**: All opportunities with hours worked, sorted by total hours
+
+**Filter to specific number of weeks:**
+```bash
+python run.py report --weeks 8
+```
+
+The manager report uses data from the preview file, so run `preview` first.
 
 ## Configuration Files
 
@@ -294,10 +321,12 @@ sca-time-automation/
 │   │   ├── calendar_export.json   # VBA export from Outlook
 │   │   └── project_codes.xlsx     # Symlink to OneDrive
 │   └── output/
-│       └── time_entries_preview.xlsx  # Generated preview
+│       ├── time_entries_preview.xlsx  # Generated preview
+│       └── manager_report.xlsx        # Manager report
 ├── scripts/
 │   ├── calendar_export.vbs        # Outlook VBA export script
-│   └── generate_clients_yaml.py   # Helper to create clients.yaml
+│   ├── generate_clients_yaml.py   # Helper to create clients.yaml
+│   └── manager_report.py          # Manager report generator
 ├── src/
 │   ├── config.py                  # Config and env loader
 │   ├── loader.py                  # Calendar JSON loader
@@ -340,6 +369,9 @@ python run.py preview
 # Generate preview without AI (faster)
 python run.py preview --no-ai
 
+# Generate preview for last N weeks
+python run.py preview --weeks 12
+
 # Show weeks and status
 python run.py status
 
@@ -348,6 +380,12 @@ python run.py upload --latest
 
 # Upload specific week
 python run.py upload 2025-12-07
+
+# Generate manager report
+python run.py report
+
+# Generate manager report for last N weeks
+python run.py report --weeks 8
 ```
 
 ## License

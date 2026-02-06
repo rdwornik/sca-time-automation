@@ -7,16 +7,35 @@ from pathlib import Path
 from src.config import get_settings
 
 def load_project_codes(path: str | Path | None = None) -> pd.DataFrame:
-    """Load project codes from Excel."""
+    """Load project codes from Excel - supports old and new format."""
     if path is None:
         settings = get_settings()
         path = Path(settings["paths"]["project_codes"])
-    
+
     df = pd.read_excel(path)
-    df.columns = ["company", "description", "code"]
+
+    # Detect format and normalize column names
+    if 'JDA OpptyID' in df.columns:
+        # New format
+        df = df.rename(columns={
+            'JDA OpptyID': 'code',
+            'Account Name': 'company',
+            'Opportunity Name': 'description'
+        })
+    elif 'Project Code' in df.columns:
+        # Old format with headers
+        df = df.rename(columns={
+            'Project Code': 'code',
+            'Company': 'company',
+            'Project Description': 'description'
+        })
+    else:
+        # Legacy format without headers (positional)
+        df.columns = ["company", "description", "code"]
+
     df["company_lower"] = df["company"].str.lower().str.strip()
-    df["description_lower"] = df["description"].str.lower().str.strip()  # Add this line
-    
+    df["description_lower"] = df["description"].str.lower().str.strip()
+
     return df
 
 def match_opportunity_id(client: str, event_title: str, project_codes: pd.DataFrame) -> tuple[str, bool]:

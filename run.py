@@ -3,12 +3,15 @@
 SCA Time Automation - Main CLI entry point
 
 Commands:
-  export          Reminder to run VBA export script
-  preview         Generate Excel preview with time entries
-  preview --no-ai Generate preview without AI (YAML-based only, faster)
-  upload WEEK     Upload specific week (e.g., "2025-12-07")
-  upload --latest Upload most recent week from preview
-  status          Show weeks in preview and their upload status
+  export              Reminder to run VBA export script
+  preview             Generate Excel preview with time entries
+  preview --no-ai     Generate preview without AI (YAML-based only, faster)
+  preview --weeks N   Filter to last N weeks (default: from config)
+  upload WEEK         Upload specific week (e.g., "2025-12-07")
+  upload --latest     Upload most recent week from preview
+  status              Show weeks in preview and their upload status
+  report              Generate manager report (Weekly Hours + Opportunities)
+  report --weeks N    Report for last N weeks (default: from config)
 """
 
 import argparse
@@ -37,20 +40,24 @@ def cmd_export():
     print()
 
 
-def cmd_preview(use_ai: bool = True):
+def cmd_preview(use_ai: bool = True, weeks_back: int | None = None):
     """Generate Excel preview with time entries."""
     settings = get_settings()
+
+    # Use default from config if not specified
+    if weeks_back is None:
+        weeks_back = settings.get("report", {}).get("weeks_back", 12)
 
     # Check AI configuration
     ai_enabled = settings["ai"]["enabled"] and use_ai
     mode = "AI-enabled" if ai_enabled else "YAML-only"
 
-    print(f"Generating preview ({mode})...")
+    print(f"Generating preview ({mode}, last {weeks_back} weeks)...")
     print()
 
     # Generate preview using the complete workflow in excel_preview
     output_path = settings["paths"]["excel_preview"]
-    df = generate_final_preview(output_path, fill=True)
+    df = generate_final_preview(output_path, fill=True, weeks_back=weeks_back)
 
     # Count entries (excluding summary rows)
     entry_count = len(df[df["category"] != ">>> WEEK TOTAL"])
@@ -58,7 +65,7 @@ def cmd_preview(use_ai: bool = True):
 
     print(f"Generated {entry_count} entries across {week_count} weeks")
     print()
-    print(f"✓ Preview generated: {output_path}")
+    print(f"Preview generated: {output_path}")
     print()
     print("Review the Excel file and then:")
     print("  - Upload latest week: python run.py upload --latest")
@@ -120,6 +127,12 @@ def cmd_upload(week: str = None, latest: bool = False):
             if not r["success"]:
                 print(f"  - {r['category']}: {r.get('error', 'Unknown error')}")
         sys.exit(1)
+
+
+def cmd_report(weeks_back: int | None = None):
+    """Generate manager report (Weekly Hours + Opportunities)."""
+    from scripts.manager_report import generate_manager_report
+    generate_manager_report(weeks_back=weeks_back)
 
 
 def cmd_status():
@@ -187,6 +200,7 @@ def main():
     # preview command
     preview_parser = subparsers.add_parser("preview", help="Generate Excel preview")
     preview_parser.add_argument("--no-ai", action="store_true", help="Disable AI (faster, YAML-based only)")
+    preview_parser.add_argument("--weeks", type=int, default=None, help="Number of weeks back to include (default: from config)")
 
     # upload command
     upload_parser = subparsers.add_parser("upload", help="Upload time entries to SharePoint")
@@ -195,6 +209,10 @@ def main():
 
     # status command
     subparsers.add_parser("status", help="Show weeks in preview")
+
+    # report command
+    report_parser = subparsers.add_parser("report", help="Generate manager report (Weekly Hours + Opportunities)")
+    report_parser.add_argument("--weeks", type=int, default=None, help="Number of weeks back to include (default: from config)")
 
     args = parser.parse_args()
 
@@ -206,11 +224,13 @@ def main():
         if args.command == "export":
             cmd_export()
         elif args.command == "preview":
-            cmd_preview(use_ai=not args.no_ai)
+            cmd_preview(use_ai=not args.no_ai, weeks_back=args.weeks)
         elif args.command == "upload":
             cmd_upload(week=args.week, latest=args.latest)
         elif args.command == "status":
             cmd_status()
+        elif args.command == "report":
+            cmd_report(weeks_back=args.weeks)
         else:
             parser.print_help()
             sys.exit(1)

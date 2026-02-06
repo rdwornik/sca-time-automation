@@ -53,10 +53,14 @@ def split_multiday_events(events: list) -> list:
     return result
 
 
-def generate_preview(output_path: str | Path | None = None) -> pd.DataFrame:
+def generate_preview(output_path: str | Path | None = None, weeks_back: int | None = None) -> pd.DataFrame:
     """Generate Excel preview from calendar events.
 
     Uses project_codes.xlsx as single source of truth for client detection.
+
+    Args:
+        output_path: Path to output Excel file
+        weeks_back: If specified, filter to last N weeks
     """
     from src.overlap import resolve_overlaps_by_hour
 
@@ -73,7 +77,7 @@ def generate_preview(output_path: str | Path | None = None) -> pd.DataFrame:
     category_mapping = get_category_mapping()
     sales_categories = set(category_mapping.get("sales_categories", []))
 
-    events = load_and_filter()
+    events = load_and_filter(weeks_back=weeks_back)
     events = split_multiday_events(events)
 
     # Resolve overlaps - only highest priority per hour
@@ -122,10 +126,14 @@ def generate_preview(output_path: str | Path | None = None) -> pd.DataFrame:
     return df
 
 
-def generate_aggregated_preview(output_path: str | Path | None = None) -> pd.DataFrame:
+def generate_aggregated_preview(output_path: str | Path | None = None, weeks_back: int | None = None) -> pd.DataFrame:
     """
     Generate Excel preview with WEEK TOTAL summaries.
     Each calendar event is a separate row (no aggregation by category).
+
+    Args:
+        output_path: Path to output Excel file
+        weeks_back: If specified, filter to last N weeks
     """
     from src.aggregator import aggregate_entries, add_week_summaries
 
@@ -133,7 +141,7 @@ def generate_aggregated_preview(output_path: str | Path | None = None) -> pd.Dat
     if output_path is None:
         output_path = Path(settings["paths"]["excel_preview"])
 
-    df = generate_preview(output_path=None)
+    df = generate_preview(output_path=None, weeks_back=weeks_back)
     # aggregate_entries now just sorts and prepares data (no aggregation)
     sorted_df = aggregate_entries(df)
     # Add WEEK TOTAL summary rows
@@ -145,15 +153,21 @@ def generate_aggregated_preview(output_path: str | Path | None = None) -> pd.Dat
 
     return df_with_summary
 
-def generate_final_preview(output_path: str | Path | None = None, fill: bool = True) -> pd.DataFrame:
-    """Generate final Excel preview with gap filling and colors."""
+def generate_final_preview(output_path: str | Path | None = None, fill: bool = True, weeks_back: int | None = None) -> pd.DataFrame:
+    """Generate final Excel preview with gap filling and colors.
+
+    Args:
+        output_path: Path to output Excel file
+        fill: If True, fill gaps to reach 40h target
+        weeks_back: If specified, filter to last N weeks
+    """
     from src.excel_writer import write_excel_with_formatting
 
     settings = get_settings()
     if output_path is None:
         output_path = Path(settings["paths"]["excel_preview"])
 
-    df = generate_aggregated_preview(output_path=None)
+    df = generate_aggregated_preview(output_path=None, weeks_back=weeks_back)
 
     if fill:
         df = fill_gaps_with_new_entries(df)

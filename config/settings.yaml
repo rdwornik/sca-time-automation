@@ -24,3 +24,7 @@ sharepoint:
 ai:
   enabled: true
   model: "gemini-3-flash-preview"
+
+# Manager report configuration
+report:
+  weeks_back: 12

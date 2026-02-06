@@ -41,7 +41,24 @@ def filter_excluded(events: list[CalendarEvent]) -> list[CalendarEvent]:
     return [e for e in events if e["category"].upper() not in excluded_cats]
 
 
-def load_and_filter(path: str | Path | None = None) -> list[CalendarEvent]:
-    """Load calendar and filter excluded categories."""
+def filter_by_weeks(events: list[CalendarEvent], weeks_back: int) -> list[CalendarEvent]:
+    """Filter events to last N weeks."""
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(weeks=weeks_back)
+    return [e for e in events if datetime.strptime(e['start'][:10], '%Y-%m-%d') >= cutoff]
+
+
+def load_and_filter(path: str | Path | None = None, weeks_back: int | None = None) -> list[CalendarEvent]:
+    """Load calendar and filter excluded categories.
+
+    Args:
+        path: Path to calendar JSON file
+        weeks_back: If specified, filter to last N weeks
+    """
     events = load_calendar(path)
-    return filter_excluded(events)
+    events = filter_excluded(events)
+
+    if weeks_back is not None:
+        events = filter_by_weeks(events, weeks_back)
+
+    return events
