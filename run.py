@@ -9,6 +9,7 @@ Commands:
   preview --weeks N   Filter to last N weeks (default: from config)
   upload WEEK         Upload specific week (e.g., "2025-12-07")
   upload --latest     Upload most recent week from preview
+  upload --all        Upload all weeks from preview
   status              Show weeks in preview and their upload status
   report              Generate manager report (Weekly Hours + Opportunities)
   report --weeks N    Report for last N weeks (default: from config)
@@ -20,7 +21,7 @@ from pathlib import Path
 
 from src.config import get_settings
 from src.excel_preview import generate_final_preview
-from src.sharepoint import post_week_entries
+from src.sharepoint import post_week_entries, post_all_weeks
 
 import pandas as pd
 
@@ -68,14 +69,21 @@ def cmd_preview(use_ai: bool = True, weeks_back: int | None = None):
     print(f"Preview generated: {output_path}")
     print()
     print("Review the Excel file and then:")
-    print("  - Upload latest week: python run.py upload --latest")
+    print("  - Upload all weeks:    python run.py upload --all")
+    print("  - Upload latest week:  python run.py upload --latest")
     print("  - Upload specific week: python run.py upload 2025-12-07")
     print()
 
 
 
-def cmd_upload(week: str = None, latest: bool = False):
-    """Upload time entries for a specific week."""
+def cmd_upload(week: str = None, latest: bool = False, all_weeks: bool = False):
+    """Upload time entries to SharePoint.
+
+    Args:
+        week: Specific week to upload (e.g., "2025-12-07")
+        latest: Upload only the most recent week
+        all_weeks: Upload all weeks from preview
+    """
     settings = get_settings()
     preview_path = settings["paths"]["excel_preview"]
 
@@ -95,7 +103,26 @@ def cmd_upload(week: str = None, latest: bool = False):
         print("No weeks found in preview")
         sys.exit(1)
 
-    # Determine which week to upload
+    # Upload all weeks
+    if all_weeks:
+        print(f"Uploading all {len(weeks)} weeks from preview...")
+        result = post_all_weeks(df)
+
+        print()
+        print(f"Upload complete: {result['totals']['success']} successful, {result['totals']['failed']} failed")
+
+        if result['totals']['failed'] > 0:
+            print("\nFailed entries by week:")
+            for week_key, week_results in result['by_week'].items():
+                failed_in_week = [r for r in week_results if not r['success']]
+                if failed_in_week:
+                    print(f"  [{week_key}]")
+                    for r in failed_in_week:
+                        print(f"    - {r['category']}: {r.get('error', 'Unknown error')}")
+            sys.exit(1)
+        return
+
+    # Determine which single week to upload
     if latest:
         target_week = weeks[-1]
         print(f"Uploading latest week: {target_week}")
@@ -107,10 +134,10 @@ def cmd_upload(week: str = None, latest: bool = False):
         target_week = week
         print(f"Uploading week: {target_week}")
     else:
-        print("Error: Specify --latest or provide a week date")
+        print("Error: Specify --all, --latest, or provide a week date")
         sys.exit(1)
 
-    # Upload
+    # Upload single week
     print()
     results = post_week_entries(df, target_week)
 
@@ -206,6 +233,7 @@ def main():
     upload_parser = subparsers.add_parser("upload", help="Upload time entries to SharePoint")
     upload_parser.add_argument("week", nargs="?", help="Week to upload (YYYY-MM-DD)")
     upload_parser.add_argument("--latest", action="store_true", help="Upload most recent week")
+    upload_parser.add_argument("--all", action="store_true", help="Upload all weeks from preview")
 
     # status command
     subparsers.add_parser("status", help="Show weeks in preview")
@@ -226,7 +254,7 @@ def main():
         elif args.command == "preview":
             cmd_preview(use_ai=not args.no_ai, weeks_back=args.weeks)
         elif args.command == "upload":
-            cmd_upload(week=args.week, latest=args.latest)
+            cmd_upload(week=args.week, latest=args.latest, all_weeks=getattr(args, 'all', False))
         elif args.command == "status":
             cmd_status()
         elif args.command == "report":

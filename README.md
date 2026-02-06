@@ -182,6 +182,11 @@ Shows all weeks in the preview with totals and validation status.
 
 #### Step 5: Upload to SharePoint
 
+**Upload all weeks from preview:**
+```bash
+python run.py upload --all
+```
+
 **Upload most recent week:**
 ```bash
 python run.py upload --latest
@@ -374,6 +379,9 @@ python run.py preview --weeks 12
 
 # Show weeks and status
 python run.py status
+
+# Upload all weeks from preview
+python run.py upload --all
 
 # Upload latest week
 python run.py upload --latest

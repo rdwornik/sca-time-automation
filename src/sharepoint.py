@@ -91,12 +91,12 @@ def post_week_entries(df, week: str, access_token: str = None) -> list:
     """Post all entries for a specific week."""
     if access_token is None:
         access_token = get_access_token()
-    
+
     week_data = df[
-        (df["week_beginning"] == week) & 
+        (df["week_beginning"] == week) &
         (df["category"] != ">>> WEEK TOTAL")
     ]
-    
+
     results = []
     for _, row in week_data.iterrows():
         result = post_time_entry(row.to_dict(), access_token)
@@ -106,6 +106,42 @@ def post_week_entries(df, week: str, access_token: str = None) -> list:
             "success": result["success"],
             "error": result.get("error")
         })
-        print(f"{'✓' if result['success'] else '✗'} {row['category']}: {row['hours']}h")
-    
+        print(f"  {'OK' if result['success'] else 'FAIL'} {row['category']}: {row['hours']}h")
+
     return results
+
+
+def post_all_weeks(df, access_token: str = None) -> dict:
+    """Post all weeks from DataFrame to SharePoint.
+
+    Returns:
+        dict with 'by_week' (results per week) and 'totals' (success/fail counts)
+    """
+    import pandas as pd
+
+    if access_token is None:
+        access_token = get_access_token()
+
+    # Get unique weeks (excluding summary rows)
+    weeks = df[df["category"] != ">>> WEEK TOTAL"]["week_beginning"].unique()
+    weeks = sorted([w for w in weeks if pd.notna(w)])
+
+    all_results = {}
+    total_success = 0
+    total_failed = 0
+
+    for week in weeks:
+        print(f"\n[{week}]")
+        results = post_week_entries(df, week, access_token)
+        all_results[week] = results
+
+        week_success = sum(1 for r in results if r["success"])
+        week_failed = len(results) - week_success
+        total_success += week_success
+        total_failed += week_failed
+
+    return {
+        "by_week": all_results,
+        "totals": {"success": total_success, "failed": total_failed},
+        "weeks": weeks
+    }
